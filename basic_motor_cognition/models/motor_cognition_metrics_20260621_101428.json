@@ -1,0 +1,163 @@
+{
+  "window_count": 443,
+  "feature_count": 144,
+  "group_count": 20,
+  "label_counts": {
+    "rest": 88,
+    "left_hand": 89,
+    "right_hand": 89,
+    "both_feet": 89,
+    "both_hands": 88
+  },
+  "intent_threshold": 0.25,
+  "cross_validation": {
+    "available": true,
+    "folds": [
+      {
+        "fold": 1,
+        "train_windows": 354,
+        "test_windows": 89,
+        "train_groups": 16,
+        "test_groups": 4
+      },
+      {
+        "fold": 2,
+        "train_windows": 354,
+        "test_windows": 89,
+        "train_groups": 16,
+        "test_groups": 4
+      },
+      {
+        "fold": 3,
+        "train_windows": 354,
+        "test_windows": 89,
+        "train_groups": 16,
+        "test_groups": 4
+      },
+      {
+        "fold": 4,
+        "train_windows": 355,
+        "test_windows": 88,
+        "train_groups": 16,
+        "test_groups": 4
+      },
+      {
+        "fold": 5,
+        "train_windows": 355,
+        "test_windows": 88,
+        "train_groups": 16,
+        "test_groups": 4
+      }
+    ],
+    "final_accuracy": 0.033860045146726865,
+    "final_balanced_accuracy": 0.03403983656792646,
+    "final_classification_report": {
+      "rest": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 88.0
+      },
+      "left_hand": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 89.0
+      },
+      "right_hand": {
+        "precision": 0.011834319526627219,
+        "recall": 0.02247191011235955,
+        "f1-score": 0.015503875968992248,
+        "support": 89.0
+      },
+      "both_feet": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 89.0
+      },
+      "both_hands": {
+        "precision": 0.11607142857142858,
+        "recall": 0.14772727272727273,
+        "f1-score": 0.13,
+        "support": 88.0
+      },
+      "accuracy": 0.033860045146726865,
+      "macro avg": {
+        "precision": 0.02558114961961116,
+        "recall": 0.03403983656792646,
+        "f1-score": 0.029100775193798452,
+        "support": 443.0
+      },
+      "weighted avg": {
+        "precision": 0.025434627882969612,
+        "recall": 0.033860045146726865,
+        "f1-score": 0.028938701944109056,
+        "support": 443.0
+      }
+    },
+    "final_confusion_matrix": [
+      [
+        0,
+        3,
+        66,
+        12,
+        7
+      ],
+      [
+        0,
+        0,
+        26,
+        33,
+        30
+      ],
+      [
+        0,
+        23,
+        2,
+        35,
+        29
+      ],
+      [
+        0,
+        23,
+        33,
+        0,
+        33
+      ],
+      [
+        0,
+        14,
+        42,
+        19,
+        13
+      ]
+    ],
+    "intent_metrics": {
+      "precision": 0.801354401805869,
+      "recall": 1.0,
+      "f1": 0.8897243107769424,
+      "support_positive": 355,
+      "support_negative": 88,
+      "roc_auc": 0.3241997439180538
+    }
+  },
+  "session_dirs": [
+    "E:\\Brainz\\basic_motor_cognition\\data\\basic_motor_cognition_20260621_100246\\session_01"
+  ],
+  "protocol_versions": {
+    "E:\\Brainz\\basic_motor_cognition\\data\\basic_motor_cognition_20260621_100246\\session_01": "motor_imagery_erd_v3"
+  },
+  "protocol_filter": "motor_imagery_erd_v3",
+  "training_settings": {
+    "window_seconds": 3.0,
+    "step_seconds": 0.25,
+    "min_valid_fraction": 0.95,
+    "min_label_fraction": 0.9,
+    "transition_skip_seconds": 1.5,
+    "baseline_skip_seconds": 1.0,
+    "random_state": 37,
+    "cv_splits": 5,
+    "validation_group_level": "trial"
+  }
+}

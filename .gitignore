@@ -1,0 +1,101 @@
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# EEG recordings and derived datasets
+/sessions/
+/recordings/
+/universal_brain_recorder/labeled_dataset/
+/brain_state_representation/live_sessions/
+/brain_music/sessions/
+
+# Session artifacts (in case they appear outside /sessions/)
+eeg_samples.csv
+eeg_samples_*.csv
+events.csv
+brainaccess_annotations.csv
+summary.png
+traceability.json
+session.json
+SESSION.md
+metadata.json
+predictions.csv
+music_events.csv
+brainaccess_maxi_32ch.npz
+
+# Model binaries and machine-local pointers
+*.pkl
+*.pt
+*.pth
+*.joblib
+*.onnx
+*.h5
+*.safetensors
+*.ckpt
+latest_*_path.txt
+
+# Derived model outputs
+*_training_windows_*.csv
+brain_state_embeddings_*.csv
+*_embeddings_*.csv
+
+# NumPy / tabular caches
+*.npz
+*.parquet
+
+# Vendor and large binary assets
+BrainAccessBoard/
+*.exe
+assets/*.stl
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.ipynb_checkpoints/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# OS and editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Cursor / agent local state
+.agents/
+.cursor/
+
+# Universal recorder catalogs (regenerated from sessions)
+/universal_brain_recorder/recording_catalog.csv
+/universal_brain_recorder/recording_catalog.json

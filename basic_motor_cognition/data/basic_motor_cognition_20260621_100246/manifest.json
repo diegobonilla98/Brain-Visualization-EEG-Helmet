@@ -1,0 +1,80 @@
+{
+  "study_dir": "E:\\Brainz\\basic_motor_cognition\\data\\basic_motor_cognition_20260621_100246",
+  "protocol_version": "motor_imagery_erd_v3",
+  "session_count": 1,
+  "samples_per_class": 4,
+  "sessions": [
+    {
+      "session_index": 1,
+      "session_dir": "E:\\Brainz\\basic_motor_cognition\\data\\basic_motor_cognition_20260621_100246\\session_01",
+      "planned_sample_count": 20,
+      "completed_sample_count": 20,
+      "stopped_by_escape": false,
+      "rows": 150786,
+      "duration_s": 603.144
+    }
+  ],
+  "target_columns": [
+    "left_arm",
+    "right_arm",
+    "left_leg",
+    "right_leg"
+  ],
+  "conditions": [
+    {
+      "condition_name": "rest",
+      "screen_text": "REST",
+      "instruction": "Stay relaxed. Keep attention steady. Do not imagine movement.",
+      "class_label": "rest",
+      "active_intent": 0,
+      "left_arm": 0,
+      "right_arm": 0,
+      "left_leg": 0,
+      "right_leg": 0
+    },
+    {
+      "condition_name": "left_hand",
+      "screen_text": "LEFT HAND",
+      "instruction": "Imagine repeatedly opening and closing the left hand from inside the body.",
+      "class_label": "left_hand",
+      "active_intent": 1,
+      "left_arm": 1,
+      "right_arm": 0,
+      "left_leg": 0,
+      "right_leg": 0
+    },
+    {
+      "condition_name": "right_hand",
+      "screen_text": "RIGHT HAND",
+      "instruction": "Imagine repeatedly opening and closing the right hand from inside the body.",
+      "class_label": "right_hand",
+      "active_intent": 1,
+      "left_arm": 0,
+      "right_arm": 1,
+      "left_leg": 0,
+      "right_leg": 0
+    },
+    {
+      "condition_name": "both_feet",
+      "screen_text": "BOTH FEET",
+      "instruction": "Imagine both feet pressing pedals or starting to walk. Keep legs relaxed.",
+      "class_label": "both_feet",
+      "active_intent": 1,
+      "left_arm": 0,
+      "right_arm": 0,
+      "left_leg": 1,
+      "right_leg": 1
+    },
+    {
+      "condition_name": "both_hands",
+      "screen_text": "BOTH HANDS",
+      "instruction": "Imagine both hands opening and closing together without tensing.",
+      "class_label": "both_hands",
+      "active_intent": 1,
+      "left_arm": 1,
+      "right_arm": 1,
+      "left_leg": 0,
+      "right_leg": 0
+    }
+  ]
+}

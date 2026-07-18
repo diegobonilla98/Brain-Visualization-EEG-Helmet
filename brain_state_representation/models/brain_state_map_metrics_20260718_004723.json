@@ -1,0 +1,11 @@
+{
+  "model_path": "D:\\Brainz\\brain_state_representation\\models\\universal_brain_model.pt",
+  "map_path": "D:\\Brainz\\brain_state_representation\\models\\brain_state_map_20260718_004723.joblib",
+  "embedding_rows": 25366,
+  "recording_count": 22,
+  "dimensions": 3,
+  "pca_explained_variance_ratio_sum": 0.770807320009844,
+  "parametric_teacher_rmse": 0.192793380075712,
+  "median_adjacent_map_distance": 0.0796730560936085,
+  "median_map_acceleration": 0.060556614960221244
+}
