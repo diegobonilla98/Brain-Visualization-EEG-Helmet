@@ -17,8 +17,14 @@ CHUNK_ROWS = 50000
 OVERWRITE = True
 INCLUDE_DERIVED_BASELINES = True
 INCLUDE_STANDALONE_RECORDING = True
-CANONICAL_LABEL_VERSION = "brainz_canonical_tasks_v2"
+CANONICAL_LABEL_VERSION = "brainz_canonical_tasks_v3"
 TAXONOMY = {
+    "eyes_closed_relaxed_calibration": {
+        "task_domain": "resting_calibration",
+        "engagement_type": "passive_rest",
+        "stimulus_modality": "none_eyes_closed",
+        "movement_expectation": "still",
+    },
     "scrolling_reels": {
         "task_domain": "passive_social_media",
         "engagement_type": "passive_interactive",
@@ -232,8 +238,17 @@ def valid_sample_mask(frame):
 
 
 def segment_arrays(traceability):
+    segments = [segment for segment in traceability.get("task_segments", []) if segment.get("start_pc_time_perf_counter_s") is not None]
+    calibration = traceability.get("calibration")
+    if calibration and calibration.get("start_pc_time_perf_counter_s") is not None:
+        segments.append({
+            **calibration,
+            "segment_index": -2,
+            "task_name": calibration.get("label", "eyes_closed_relaxed_calibration"),
+            "description": calibration.get("instructions", "Eyes closed relaxed calibration."),
+        })
     segments = sorted(
-        [segment for segment in traceability.get("task_segments", []) if segment.get("start_pc_time_perf_counter_s") is not None],
+        segments,
         key=lambda segment: float(segment["start_pc_time_perf_counter_s"]),
     )
     starts = np.asarray([float(segment["start_pc_time_perf_counter_s"]) for segment in segments], dtype=float)
@@ -282,6 +297,16 @@ def canonical_columns(frame, traceability, row_offset):
     task_descriptions[~valid_samples] = "The device streaming validity flag marks this row as invalid."
     task_tags[~valid_samples] = "invalid|stream"
     segment_indices[~valid_samples] = -1
+    task_domains = np.full(len(frame), taxonomy["task_domain"], dtype=object)
+    engagement_types = np.full(len(frame), taxonomy["engagement_type"], dtype=object)
+    stimulus_modalities = np.full(len(frame), taxonomy["stimulus_modality"], dtype=object)
+    movement_expectations = np.full(len(frame), taxonomy["movement_expectation"], dtype=object)
+    calibration_mask = task_labels == "eyes_closed_relaxed_calibration"
+    calibration_taxonomy = TAXONOMY["eyes_closed_relaxed_calibration"]
+    task_domains[calibration_mask] = calibration_taxonomy["task_domain"]
+    engagement_types[calibration_mask] = calibration_taxonomy["engagement_type"]
+    stimulus_modalities[calibration_mask] = calibration_taxonomy["stimulus_modality"]
+    movement_expectations[calibration_mask] = calibration_taxonomy["movement_expectation"]
     if "sample_index" not in frame.columns:
         frame.insert(0, "sample_index", np.arange(row_offset, row_offset + len(frame), dtype=np.int64))
     output = pd.DataFrame({
@@ -290,11 +315,13 @@ def canonical_columns(frame, traceability, row_offset):
         "canonical_task_label": task_labels,
         "task_description": task_descriptions,
         "task_tags": task_tags,
-        "task_domain": taxonomy["task_domain"],
-        "engagement_type": taxonomy["engagement_type"],
-        "stimulus_modality": taxonomy["stimulus_modality"],
-        "movement_expectation": taxonomy["movement_expectation"],
+        "task_domain": task_domains,
+        "engagement_type": engagement_types,
+        "stimulus_modality": stimulus_modalities,
+        "movement_expectation": movement_expectations,
         "segment_index": segment_indices,
+        "is_calibration": calibration_mask,
+        "calibration_completed": bool(traceability.get("calibration", {}).get("completed", False)),
         "is_valid_eeg_sample": valid_samples,
         "is_task_labeled": (task_labels != "unlabeled_transition") & (task_labels != "invalid_stream_sample"),
         "timing_alignment_source": timing_source,

@@ -1,20 +1,29 @@
+import sys
 import time
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MODULE_ROOT = Path(__file__).resolve().parent
+for path in (PROJECT_ROOT, PROJECT_ROOT / "brain_state_representation", MODULE_ROOT):
+    path_text = str(path)
+    if path_text not in sys.path:
+        sys.path.insert(0, path_text)
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.animation import FuncAnimation
 
-from brain_music_common import CHANNEL_NAMES, DEFAULT_MODEL_ROOT, DEFAULT_SAMPLE_ROOT, BrainMusicComposer, BrainStateProjector, PianoSampleLibrary, PolyphonicPianoEngine, latest_pointer, make_session_dir
+from brain_music_common import BrainMusicComposer, BrainStateProjector, PianoSampleLibrary, PolyphonicPianoEngine, latest_pointer
 from brain_music_visualizer import BrainMusicDashboard
-from brainaccess_stream import BrainAccessStream
-from brain_state_common import CausalEEGPreprocessor
+from eeg_quality_suite.brainaccess_stream import BrainAccessStream
+from brain_state_common import CHANNEL_NAMES, CausalEEGPreprocessor
 
 
 DEVICE_NAME = "BA MAXI 034"
 GAIN_NAME = "X8"
-MODEL_ROOT = DEFAULT_MODEL_ROOT
-SAMPLE_ROOT = DEFAULT_SAMPLE_ROOT
+MODEL_ROOT = PROJECT_ROOT / "brain_state_representation" / "models"
+SAMPLE_ROOT = Path(r"C:\Users\diego\Downloads\mp3 Notes\mp3 Notes")
 MODEL_PATH = ""
 MAP_PATH = ""
 DEVICE = "auto"
@@ -25,6 +34,13 @@ TAIL_SECONDS = 20.0
 FRAME_INTERVAL_MS = 33
 AUDIO_ENABLED = True
 SHOW_TRAINING_MANIFOLD = True
+
+
+def make_session_dir(mode):
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    output_dir = MODULE_ROOT / "sessions" / f"{mode}_{stamp}"
+    output_dir.mkdir(parents=True, exist_ok=False)
+    return output_dir
 
 
 def read_new_samples(recorder, consumed_chunks, row_indices):
@@ -41,7 +57,7 @@ def read_new_samples(recorder, consumed_chunks, row_indices):
     return consumed_chunks, np.concatenate(rows, axis=1)
 
 
-def context_coordinates(model_root, map_bundle):
+def context_coordinates(model_root, map_bundle, latest_pointer):
     if not SHOW_TRAINING_MANIFOLD:
         return None
     embeddings_path = latest_pointer(model_root, "latest_embeddings_path.txt", "brain_state_embeddings_*.csv")
@@ -50,27 +66,35 @@ def context_coordinates(model_root, map_bundle):
 
 
 def main():
-    projector = BrainStateProjector(MODEL_ROOT, MODEL_PATH, MAP_PATH, DEVICE, INFERENCE_STEP_SECONDS)
-    library = PianoSampleLibrary(SAMPLE_ROOT)
-    audio = PolyphonicPianoEngine(library, enabled=AUDIO_ENABLED)
-    composer = BrainMusicComposer(audio, projector.map_bundle["bounds"], INFERENCE_STEP_SECONDS)
-    training_context = context_coordinates(MODEL_ROOT, projector.map_bundle)
     output_dir = make_session_dir("live")
     states = []
     consumed_chunks = 0
-    filtered_buffer = np.zeros((len(CHANNEL_NAMES), 0), dtype=np.float32)
-    calibration_buffer = np.zeros((len(CHANNEL_NAMES), 0), dtype=np.float32)
+    filtered_buffer = None
+    calibration_buffer = None
     session_center = None
     session_scale = None
     samples_since_inference = 0
-    current_coordinate = np.mean(np.asarray(projector.map_bundle["bounds"], dtype=float), axis=1)
+    current_coordinate = None
     current_hue = 0.55
     state_ready = False
     started_at = time.perf_counter()
-    with BrainAccessStream(device_name=DEVICE_NAME, gain_name=GAIN_NAME) as recorder:
+    audio = None
+    composer = None
+    projector = None
+    recorder = BrainAccessStream(device_name=DEVICE_NAME, gain_name=GAIN_NAME)
+    try:
+        recorder.connect()
         recorder.start()
         labels = [f"{name}_uV" for name in CHANNEL_NAMES]
         row_indices = [recorder.channel_indices[label] for label in labels]
+        filtered_buffer = np.zeros((len(CHANNEL_NAMES), 0), dtype=np.float32)
+        calibration_buffer = np.zeros((len(CHANNEL_NAMES), 0), dtype=np.float32)
+        projector = BrainStateProjector(MODEL_ROOT, MODEL_PATH, MAP_PATH, DEVICE, INFERENCE_STEP_SECONDS)
+        library = PianoSampleLibrary(SAMPLE_ROOT)
+        audio = PolyphonicPianoEngine(library, enabled=AUDIO_ENABLED)
+        composer = BrainMusicComposer(audio, projector.map_bundle["bounds"], INFERENCE_STEP_SECONDS)
+        training_context = context_coordinates(MODEL_ROOT, projector.map_bundle, latest_pointer)
+        current_coordinate = np.mean(np.asarray(projector.map_bundle["bounds"], dtype=float), axis=1)
         preprocessor = CausalEEGPreprocessor(
             recorder.sample_frequency,
             float(projector.config["sample_rate"]),
@@ -141,25 +165,28 @@ def main():
         animation = FuncAnimation(dashboard.figure, update, interval=FRAME_INTERVAL_MS, blit=False, cache_frame_data=False)
         dashboard.figure.tight_layout(rect=(0, 0, 1, 0.97))
         plt.show()
-    audio.stop()
-    states_path = output_dir / "brain_states.csv"
-    pd.DataFrame(states).to_csv(states_path, index=False)
-    metadata = {
-        "mode": "live_brain_music",
-        "device_name": DEVICE_NAME,
-        "model_path": str(projector.model_path),
-        "map_path": str(projector.map_path),
-        "sample_root": str(SAMPLE_ROOT),
-        "baseline_seconds": BASELINE_SECONDS,
-        "inference_step_seconds": INFERENCE_STEP_SECONDS,
-        "audio_enabled": AUDIO_ENABLED,
-        "state_count": len(states),
-        "event_count": len(composer.events),
-    }
-    events_path, metadata_path = composer.save_events(output_dir, metadata)
-    print("Saved brain states:", states_path)
-    print("Saved musical events:", events_path)
-    print("Saved metadata:", metadata_path)
+        states_path = output_dir / "brain_states.csv"
+        pd.DataFrame(states).to_csv(states_path, index=False)
+        metadata = {
+            "mode": "live_brain_music",
+            "device_name": DEVICE_NAME,
+            "model_path": str(projector.model_path),
+            "map_path": str(projector.map_path),
+            "sample_root": str(SAMPLE_ROOT),
+            "baseline_seconds": BASELINE_SECONDS,
+            "inference_step_seconds": INFERENCE_STEP_SECONDS,
+            "audio_enabled": AUDIO_ENABLED,
+            "state_count": len(states),
+            "event_count": len(composer.events),
+        }
+        events_path, metadata_path = composer.save_events(output_dir, metadata)
+        print("Saved brain states:", states_path)
+        print("Saved musical events:", events_path)
+        print("Saved metadata:", metadata_path)
+    finally:
+        if audio is not None:
+            audio.stop()
+        recorder.close()
 
 
 if __name__ == "__main__":

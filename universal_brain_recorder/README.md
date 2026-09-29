@@ -19,7 +19,11 @@ The Tkinter recorder asks for:
 
 Raw EEG is streamed incrementally to disk rather than retained until the end. This allows long recordings without memory usage growing with session duration.
 
-The live panel can mark instantaneous events, begin and end labeled intervals, stop the stream, and show the event timeline and elapsed time. Event boundaries use `state_start` and `state_end` so the existing Brainz labeling utilities can assign labels to EEG samples later.
+Every `universal_task_recording_v3` session begins with a mandatory 30-second static, eyes-closed, relaxed calibration after the EEG stream and incremental writer have started. A large visible countdown instructs the user to remain still, relax the jaw and face, and breathe naturally. Task recording and event controls become available only after calibration completes.
+
+Calibration start, end, measured duration, expected sample count, completion status, tags, and instructions are stored in the event, metadata, canonical session, SDK annotation, and traceability outputs. Interrupted calibrations are saved as incomplete and never mislabeled as task data.
+
+The live panel can then mark instantaneous events, begin and end labeled intervals, stop the stream, and show the event timeline and elapsed time. Event boundaries use `state_start` and `state_end` so the existing Brainz labeling utilities can assign labels to EEG samples later.
 
 ## Session contents
 
@@ -80,6 +84,7 @@ Canonical fields separate:
 - User-authored, protocol-inferred, derived, or unknown provenance.
 - Label confidence and session grouping.
 - Valid EEG samples, unlabeled transitions, and invalid stream rows.
+- Explicit `eyes_closed_relaxed_calibration` samples with `is_calibration` and `calibration_completed` fields.
 
 Project-wide outputs include:
 

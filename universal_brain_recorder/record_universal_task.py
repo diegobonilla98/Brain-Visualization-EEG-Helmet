@@ -1,5 +1,6 @@
 import csv
 import json
+import math
 import os
 import queue
 import sys
@@ -28,10 +29,13 @@ GAIN_NAME = "X8"
 USE_BIAS = True
 BIAS_CHANNEL_NAME = "Iz"
 WRITER_POLL_SECONDS = 0.10
-PROTOCOL_VERSION = "universal_task_recording_v2"
+PROTOCOL_VERSION = "universal_task_recording_v3"
 WINDOW_TITLE = "Brainz Universal EEG Recorder"
 OPENAI_MODEL = "gpt-5.6-terra"
 PREVIEW_SAMPLE_COUNT = 2500
+CALIBRATION_SECONDS = 30.0
+CALIBRATION_LABEL = "eyes_closed_relaxed_calibration"
+CALIBRATION_TAGS = ["baseline", "eyes_closed", "passive"]
 
 
 class TagRecommendation(BaseModel):
@@ -209,8 +213,8 @@ class RecorderApp:
     def __init__(self, root):
         self.root = root
         self.root.title(WINDOW_TITLE)
-        self.root.geometry("1120x790")
-        self.root.minsize(960, 700)
+        self.root.geometry("1400x900")
+        self.root.minsize(1120, 820)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.ui_queue = queue.Queue()
         self.command_queue = queue.Queue()
@@ -239,6 +243,8 @@ class RecorderApp:
         style.configure("Subtitle.TLabel", background="#0b1020", foreground="#91a4c8", font=("Segoe UI", 10))
         style.configure("Card.TLabel", background="#151c30", foreground="#dce6fb", font=("Segoe UI", 10))
         style.configure("Section.TLabel", background="#151c30", foreground="#7dd3fc", font=("Segoe UI Semibold", 12))
+        style.configure("Calibration.TLabel", background="#101a2f", foreground="#ffffff", font=("Segoe UI Semibold", 25), anchor="center")
+        style.configure("CalibrationHint.TLabel", background="#101a2f", foreground="#9fb5d8", font=("Segoe UI", 10), anchor="center")
         style.configure("TEntry", fieldbackground="#0f172a", foreground="#ffffff", insertcolor="#ffffff", bordercolor="#334155")
         style.configure("TCheckbutton", background="#151c30", foreground="#dce6fb", font=("Segoe UI", 9))
         style.map("TCheckbutton", background=[("active", "#151c30")], foreground=[("active", "#ffffff")])
@@ -314,6 +320,12 @@ class RecorderApp:
         ttk.Label(self.live_card, text="Live event timeline", style="Section.TLabel").pack(anchor="w")
         self.live_indicator = ttk.Label(self.live_card, text="● NOT RECORDING", style="Card.TLabel")
         self.live_indicator.pack(anchor="w", pady=(8, 12))
+        calibration_frame = ttk.Frame(self.live_card, style="Card.TFrame", padding=2)
+        calibration_frame.pack(fill="x", pady=(0, 14))
+        self.calibration_var = tk.StringVar(value="Calibration begins after the helmet connects")
+        ttk.Label(calibration_frame, textvariable=self.calibration_var, style="Calibration.TLabel", padding=(12, 14)).pack(fill="x")
+        self.calibration_hint_var = tk.StringVar(value="Eyes closed · remain still · relax jaw and face · breathe naturally")
+        ttk.Label(calibration_frame, textvariable=self.calibration_hint_var, style="CalibrationHint.TLabel", padding=(10, 8), wraplength=440).pack(fill="x")
         ttk.Label(self.live_card, text="Event label", style="Card.TLabel").pack(anchor="w")
         self.event_var = tk.StringVar()
         self.event_entry = ttk.Entry(self.live_card, textvariable=self.event_var, state="disabled")
@@ -328,7 +340,7 @@ class RecorderApp:
         self.end_button.pack(side="left", fill="x", expand=True, padx=(4, 0))
         self.active_event_var = tk.StringVar(value="Active interval: none")
         ttk.Label(self.live_card, textvariable=self.active_event_var, style="Card.TLabel").pack(anchor="w", pady=(10, 8))
-        self.timeline = ttk.Treeview(self.live_card, columns=("time", "kind", "label"), show="headings", height=15)
+        self.timeline = ttk.Treeview(self.live_card, columns=("time", "kind", "label"), show="headings", height=10)
         self.timeline.heading("time", text="Time")
         self.timeline.heading("kind", text="Type")
         self.timeline.heading("label", text="Label")
@@ -417,6 +429,8 @@ class RecorderApp:
     def recording_worker(self, payload):
         events = []
         segments = []
+        calibration_segment = None
+        calibration_completed = False
         active_interval = None
         session_started_utc = utc_now()
         traceability_id = uuid.uuid4().hex
@@ -426,57 +440,106 @@ class RecorderApp:
                 recorder.start()
                 self.writer = IncrementalEEGWriter(recorder, self.output_dir / "eeg_samples.csv")
                 self.writer.start()
-                start = event_row(0, "state_start", "task_start", payload["title"], payload["description"], recorder.stream_start_perf_s)
-                events.append(start)
-                segments.append({
-                    "segment_index": 0,
-                    "task_name": payload["title"],
-                    "task_slug": slugify(payload["title"]),
-                    "description": payload["description"],
-                    "tags": payload["tags"],
-                    "start_pc_time_perf_counter_s": start["pc_time_perf_counter_s"],
-                    "start_t_from_stream_start_s": start["t_from_stream_start_s"],
-                    "start_utc_time": start["utc_time"],
+                calibration_start = event_row(0, "state_start", "calibration_start", CALIBRATION_LABEL, "Eyes closed, relaxed, still, natural breathing", recorder.stream_start_perf_s)
+                events.append(calibration_start)
+                calibration_segment = {
+                    "label": CALIBRATION_LABEL,
+                    "tags": CALIBRATION_TAGS,
+                    "planned_duration_s": CALIBRATION_SECONDS,
+                    "expected_sample_count": int(round(CALIBRATION_SECONDS * float(recorder.sample_frequency))),
+                    "eyes_closed": True,
+                    "static_posture": True,
+                    "instructions": "Remain still, relax jaw and face, and breathe naturally.",
+                    "start_pc_time_perf_counter_s": calibration_start["pc_time_perf_counter_s"],
+                    "start_t_from_stream_start_s": calibration_start["t_from_stream_start_s"],
+                    "start_utc_time": calibration_start["utc_time"],
                     "end_pc_time_perf_counter_s": None,
                     "end_t_from_stream_start_s": None,
                     "end_utc_time": None,
                     "duration_s": None,
-                })
-                recorder.annotate(f"task_start:{slugify(payload['title'])}")
-                self.ui_queue.put(("ready", start["t_from_stream_start_s"]))
+                    "completed": False,
+                }
+                recorder.annotate("calibration_start:eyes_closed_relaxed")
+                self.ui_queue.put(("calibration_started", calibration_start))
+                deadline = calibration_start["pc_time_perf_counter_s"] + CALIBRATION_SECONDS
+                displayed_second = None
                 while not self.stop_event.is_set():
-                    try:
-                        action, label = self.command_queue.get(timeout=0.1)
-                    except queue.Empty:
-                        continue
-                    if action == "mark":
-                        event = event_row(len(events), "marker", "user_marker", payload["title"], label, recorder.stream_start_perf_s)
-                        events.append(event)
-                        recorder.annotate(f"mark:{slugify(label)}")
-                        self.ui_queue.put(("event", event))
-                    elif action == "begin":
-                        if active_interval is not None:
-                            event = event_row(len(events), "state_end", "labeled_interval_end", active_interval, "interval replaced", recorder.stream_start_perf_s)
+                    remaining = max(0.0, deadline - time.perf_counter())
+                    second = int(math.ceil(remaining))
+                    if second != displayed_second:
+                        self.ui_queue.put(("calibration_tick", second))
+                        displayed_second = second
+                    if remaining <= 0.0:
+                        calibration_completed = True
+                        break
+                    time.sleep(min(0.10, remaining))
+                calibration_end = event_row(
+                    len(events),
+                    "state_end",
+                    "calibration_end" if calibration_completed else "calibration_aborted",
+                    CALIBRATION_LABEL,
+                    "Calibration completed" if calibration_completed else "Session stopped before calibration completed",
+                    recorder.stream_start_perf_s,
+                )
+                events.append(calibration_end)
+                close_segment(calibration_segment, calibration_end)
+                calibration_segment["completed"] = calibration_completed
+                recorder.annotate("calibration_end:completed" if calibration_completed else "calibration_end:aborted")
+                self.ui_queue.put(("event", calibration_end))
+                if calibration_completed:
+                    start = event_row(len(events), "state_start", "task_start", payload["title"], payload["description"], recorder.stream_start_perf_s)
+                    events.append(start)
+                    segments.append({
+                        "segment_index": 0,
+                        "task_name": payload["title"],
+                        "task_slug": slugify(payload["title"]),
+                        "description": payload["description"],
+                        "tags": payload["tags"],
+                        "start_pc_time_perf_counter_s": start["pc_time_perf_counter_s"],
+                        "start_t_from_stream_start_s": start["t_from_stream_start_s"],
+                        "start_utc_time": start["utc_time"],
+                        "end_pc_time_perf_counter_s": None,
+                        "end_t_from_stream_start_s": None,
+                        "end_utc_time": None,
+                        "duration_s": None,
+                    })
+                    recorder.annotate(f"task_start:{slugify(payload['title'])}")
+                    self.ui_queue.put(("event", start))
+                    self.ui_queue.put(("ready", start["t_from_stream_start_s"]))
+                    while not self.stop_event.is_set():
+                        try:
+                            action, label = self.command_queue.get(timeout=0.1)
+                        except queue.Empty:
+                            continue
+                        if action == "mark":
+                            event = event_row(len(events), "marker", "user_marker", payload["title"], label, recorder.stream_start_perf_s)
                             events.append(event)
+                            recorder.annotate(f"mark:{slugify(label)}")
                             self.ui_queue.put(("event", event))
-                        active_interval = label
-                        event = event_row(len(events), "state_start", "labeled_interval_start", label, "", recorder.stream_start_perf_s)
-                        events.append(event)
-                        recorder.annotate(f"event_start:{slugify(label)}")
-                        self.ui_queue.put(("event", event))
-                    elif action == "end" and active_interval is not None:
-                        event = event_row(len(events), "state_end", "labeled_interval_end", active_interval, "", recorder.stream_start_perf_s)
-                        events.append(event)
-                        recorder.annotate(f"event_end:{slugify(active_interval)}")
-                        active_interval = None
-                        self.ui_queue.put(("event", event))
+                        elif action == "begin":
+                            if active_interval is not None:
+                                event = event_row(len(events), "state_end", "labeled_interval_end", active_interval, "interval replaced", recorder.stream_start_perf_s)
+                                events.append(event)
+                                self.ui_queue.put(("event", event))
+                            active_interval = label
+                            event = event_row(len(events), "state_start", "labeled_interval_start", label, "", recorder.stream_start_perf_s)
+                            events.append(event)
+                            recorder.annotate(f"event_start:{slugify(label)}")
+                            self.ui_queue.put(("event", event))
+                        elif action == "end" and active_interval is not None:
+                            event = event_row(len(events), "state_end", "labeled_interval_end", active_interval, "", recorder.stream_start_perf_s)
+                            events.append(event)
+                            recorder.annotate(f"event_end:{slugify(active_interval)}")
+                            active_interval = None
+                            self.ui_queue.put(("event", event))
                 if active_interval is not None:
                     event = event_row(len(events), "state_end", "labeled_interval_end", active_interval, "session stopped", recorder.stream_start_perf_s)
                     events.append(event)
-                end = event_row(len(events), "state_end", "task_end", payload["title"], "session stopped by user", recorder.stream_start_perf_s)
-                events.append(end)
-                close_segment(segments[-1], end)
-                recorder.annotate(f"task_end:{slugify(payload['title'])}")
+                if segments:
+                    end = event_row(len(events), "state_end", "task_end", payload["title"], "session stopped by user", recorder.stream_start_perf_s)
+                    events.append(end)
+                    close_segment(segments[-1], end)
+                    recorder.annotate(f"task_end:{slugify(payload['title'])}")
                 recorder.stop()
                 self.writer.stop()
                 annotations = recorder.get_annotations()
@@ -504,6 +567,8 @@ class RecorderApp:
                 "session_ended_at_utc": session_ended_utc,
                 "event_count": len(events),
                 "task_segment_count": len(segments),
+                "calibration": calibration_segment,
+                "calibration_completed": calibration_completed,
                 "incremental_disk_writer": True,
             }
             write_json(metadata_path, metadata)
@@ -511,7 +576,15 @@ class RecorderApp:
             integrity = create_recording_preview(self.output_dir / "eeg_samples.csv", preview_path)
             integrity["sample_count_reported_by_writer"] = writer_summary["sample_count"]
             write_json(integrity_path, integrity)
-            write_session_files(self.output_dir, payload["title"], payload["description"], payload["tags"], "live_universal_recording", PROTOCOL_VERSION)
+            write_session_files(
+                self.output_dir,
+                payload["title"],
+                payload["description"],
+                payload["tags"],
+                "live_universal_recording",
+                PROTOCOL_VERSION,
+                extra={"calibration": calibration_segment},
+            )
             traceability = {
                 "schema_version": SCHEMA_VERSION,
                 "traceability_id": traceability_id,
@@ -526,6 +599,7 @@ class RecorderApp:
                 "consent_confirmed": True,
                 "protocol_version": PROTOCOL_VERSION,
                 "primary_task": {"name": payload["title"], "description": payload["description"], "tags": payload["tags"]},
+                "calibration": calibration_segment,
                 "task_segments": segments,
                 "available_state_labels": sorted(set(str(event["state_label"]) for event in events)),
                 "device": {
@@ -551,7 +625,7 @@ class RecorderApp:
                     file_provenance(self.output_dir / "SESSION.md", "natural_language_session_info"),
                 ],
                 "parent_sources": [],
-                "notes": "Title, description, tags, and event labels were entered in the recording UI.",
+                "notes": "The session begins with a timed eyes-closed relaxed calibration. Title, description, tags, and event labels were entered in the recording UI.",
                 "inference_evidence": [],
             }
             write_json(self.output_dir / "traceability.json", traceability)
@@ -609,11 +683,24 @@ class RecorderApp:
             except queue.Empty:
                 break
             kind = message[0]
-            if kind == "ready":
+            if kind == "calibration_started":
+                self.recording_ready = True
+                self.started_perf = time.perf_counter()
+                self.set_live_enabled(False)
+                self.stop_button.configure(state="normal")
+                self.live_indicator.configure(text="● CALIBRATING", foreground="#fbbf24")
+                self.calibration_var.set("EYES CLOSED · RELAXED\n00:30")
+                self.status_var.set("Mandatory 30-second calibration: remain still with eyes closed")
+                self.add_timeline_event(message[1])
+            elif kind == "calibration_tick":
+                seconds = max(0, int(message[1]))
+                self.calibration_var.set(f"EYES CLOSED · RELAXED\n00:{seconds:02d}")
+            elif kind == "ready":
                 self.recording_ready = True
                 self.started_perf = time.perf_counter()
                 self.set_live_enabled(True)
                 self.live_indicator.configure(text="● RECORDING", foreground="#22c55e")
+                self.calibration_var.set("CALIBRATION COMPLETE\nTASK RECORDING")
                 self.status_var.set(f"Recording to {self.output_dir}")
             elif kind == "event":
                 self.add_timeline_event(message[1])
@@ -621,6 +708,7 @@ class RecorderApp:
                 self.recording = False
                 self.recording_ready = False
                 self.live_indicator.configure(text="● SAVED", foreground="#60a5fa")
+                self.calibration_var.set("Session saved")
                 summary = message[2]
                 self.status_var.set(f"Saved {summary['sample_count']:,} samples to {message[1]}")
                 size_mb = message[3]["raw_csv_size_bytes"] / (1024 * 1024)
@@ -645,6 +733,7 @@ class RecorderApp:
                 self.recording = False
                 self.recording_ready = False
                 self.live_indicator.configure(text="● ERROR", foreground="#ef4444")
+                self.calibration_var.set("Calibration unavailable")
                 self.status_var.set("Recording failed")
                 self.set_setup_enabled(True)
                 messagebox.showerror("Recording error", message[1])

@@ -10,6 +10,11 @@
 /universal_brain_recorder/labeled_dataset/
 /brain_state_representation/live_sessions/
 /brain_music/sessions/
+/brain_music/cache/
+/videos/
+/basic_motor_cognition/data/
+/jedi_lamp_control/live_runs/
+/jedi_lamp_control/models/
 
 # Session artifacts (in case they appear outside /sessions/)
 eeg_samples.csv

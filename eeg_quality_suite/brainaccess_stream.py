@@ -16,7 +16,9 @@ from brainaccess.core.polarity import Polarity
 
 
 CONNECT_RETRIES = 5
-CONNECT_RETRY_SECONDS = 2.0
+CONNECT_RETRY_SECONDS = 3.0
+CONNECT_RETRY_BACKOFF = 1.6
+CONNECT_SETTLE_SECONDS = 1.5
 
 
 DEFAULT_MAXI_32_NAMES = [
@@ -63,16 +65,26 @@ class BrainAccessStream:
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+    def _release_core(self):
+        try:
+            core.close()
+        except Exception:
+            pass
+        time.sleep(CONNECT_SETTLE_SECONDS)
+
     def connect(self):
         last_error = None
         for attempt in range(CONNECT_RETRIES):
             if attempt > 0:
-                time.sleep(CONNECT_RETRY_SECONDS)
-                print(f"Retrying BrainAccess connection ({attempt + 1}/{CONNECT_RETRIES})...")
+                wait_seconds = CONNECT_RETRY_SECONDS * (CONNECT_RETRY_BACKOFF ** (attempt - 1))
+                print(f"Retrying BrainAccess connection ({attempt + 1}/{CONNECT_RETRIES}) after {wait_seconds:.1f}s...")
+                time.sleep(wait_seconds)
+                self._release_core()
             try:
                 return self._connect_once()
             except Exception as error:
                 last_error = error
+                print(f"BrainAccess connect attempt {attempt + 1}/{CONNECT_RETRIES} failed: {error}")
                 self.close()
         raise last_error
 
@@ -195,6 +207,7 @@ class BrainAccessStream:
                 self.stop()
             self.mgr.destroy()
             self.mgr = None
+            time.sleep(0.25)
         try:
             core.close()
         except Exception:
